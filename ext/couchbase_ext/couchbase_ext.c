@@ -65,6 +65,7 @@ typedef struct
     VALUE exception;        /* error delivered by error_callback */
     VALUE on_error_proc;    /* is using to deliver errors in async mode */
     VALUE object_space;
+    char *node_list;
 } bucket_t;
 
 typedef struct
@@ -129,6 +130,7 @@ static ID  sym_add,
            sym_ttl,
            sym_username,
            sym_version,
+           sym_node_list,
            id_arity,
            id_call,
            id_dump,
@@ -1088,6 +1090,15 @@ do_scan_connection_options(bucket_t *bucket, int argc, VALUE *argv)
             bucket->bucket = strdup(NIL_P(arg) ? "default" : RSTRING_PTR(arg));
         }
         if (TYPE(opts) == T_HASH) {
+            arg = rb_hash_aref(opts, sym_node_list);
+            if (arg != Qnil) {
+                VALUE tt;
+                xfree(bucket->node_list);
+                Check_Type(arg, T_ARRAY);
+                tt = rb_ary_join(arg, rb_str_new2(";"));
+                bucket->node_list = strdup(StringValueCStr(tt));
+            }
+
             arg = rb_hash_aref(opts, sym_hostname);
             if (arg != Qnil) {
                 if (bucket->hostname) {
@@ -1191,7 +1202,9 @@ do_connect(bucket_t *bucket)
     if (bucket->io == NULL && err != LIBCOUCHBASE_SUCCESS) {
         rb_exc_raise(cb_check_error(err, "failed to create IO instance", Qnil));
     }
-    bucket->handle = libcouchbase_create(bucket->authority,
+    //bucket->handle = libcouchbase_create(bucket->authority,
+    //        bucket->username, bucket->password, bucket->bucket, bucket->io);
+    bucket->handle = libcouchbase_create(bucket->node_list ? bucket->node_list : bucket->authority,
             bucket->username, bucket->password, bucket->bucket, bucket->io);
     if (bucket->handle == NULL) {
         rb_raise(eLibcouchbaseError, "failed to create libcouchbase instance");
@@ -1310,6 +1323,7 @@ cb_bucket_init(int argc, VALUE *argv, VALUE self)
     bucket->on_error_proc = Qnil;
     bucket->timeout = 0;
     bucket->object_space = rb_hash_new();
+    bucket->node_list = NULL;
 
     do_scan_connection_options(bucket, argc, argv);
     do_connect(bucket);
@@ -3563,4 +3577,5 @@ Init_couchbase_ext(void)
     sym_ttl = ID2SYM(rb_intern("ttl"));
     sym_username = ID2SYM(rb_intern("username"));
     sym_version = ID2SYM(rb_intern("version"));
+    sym_node_list = ID2SYM(rb_intern("node_list"));
 }
